@@ -64,7 +64,7 @@ This action does **not produce any outputs**. It logs lock acquisition, release,
 
 ## Notes
 
-- ⚠️ Always include `actions/checkout` before using this action, as it relies on Git to manage lock files.
+- Always include `actions/checkout` before using this action, as it relies on Git to manage lock files.
 
 - This action works with **Node.js 24+** (`runs.using: "node24"`).
 
@@ -128,3 +128,15 @@ jobs:
           locks_branch: locks
           action: release
 ```
+
+---
+
+## Contributing & Discussion
+
+We **welcome issues, ideas, and contributions**!
+
+- Have a question, bug report, or feature idea? Open an issue and start a discussion.
+- Want to improve the action? Fork the repository, make your changes, and submit a pull request.
+- Feedback, suggestions, and tips are all appreciated — every contribution helps make **Lock Manager** more reliable and useful for everyone.
+
+Let’s collaborate to make workflows safer, more predictable, and easier to manage!
