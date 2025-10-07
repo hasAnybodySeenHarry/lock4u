@@ -1,21 +1,25 @@
-# Lock Manager
+# Lock Queue
 
-Lock Manager is a GitHub Action that manages state locks in your repository using Git. It allows workflows to **acquire**, **release**, or **wait** for a lock on a specific key, ensuring that critical operations execute in order and without conflicts.
+Lock Queue is a GitHub Action that manages state locks in your repository using Git. It allows workflows to **acquire**, **release**, or **wait** for a lock on a specific key, ensuring that critical operations execute in order and without conflicts.
 
 ---
 
-## Why use Lock Manager?
+## Why use Lock Queue?
 
-GitHub Actions has a **built-in concurrency feature** with concurrency groups. While it ensures that only **one instance of a workflow or job runs at a time within a concurrency group**, it does **not guarantee the order** in which workflows run.
+GitHub Actions concurrency groups prevent simultaneous runs but **don’t guarantee order**. Lock Queue fills this gap by providing a **first-come-first-serve queue** for workflows:
+
+- Each workflow proposes its operation by appending an entry to a shared lock file in a Git branch.
+- Workflows wait until they see their entry at the top before executing critical tasks.
+- Non-critical tasks can run in parallel, but critical sections are **executed sequentially in arrival order**.
+
+Lock Queue is **more than a mutex** as it enforces **deterministic, linearizable ordering** for workflows that share resources.
 
 For example:
 
 - You might have multiple workflows building images in parallel.
 - You want to **queue them for versioning** in the order they start.
 
-GitHub concurrency alone cannot enforce this ordering. **Lock Manager fills this gap**, allowing workflows to queue on a shared lock and execute critical sections **sequentially**.
-
-This action enforces a linearizable ordering of workflow runs on shared resources. Each workflow “proposes” its operation by acquiring a lock in a Git branch. Workflows wait for their turn by polling the lock file, ensuring no two workflows update the same resource simultaneously and that operations happen in the order they arrive.
+With this action, workflows wait for their turn by polling the lock file, ensuring no two workflows update the same resource simultaneously and that operations happen in the order they arrive.
 
 ---
 
@@ -74,7 +78,7 @@ This action does **not produce any outputs**. It logs lock acquisition, release,
 
 ## Example Usage: Sequential Versioning with Parallel Builds
 
-This example demonstrates how to **run jobs in parallel** but enforce **sequential access** to a shared resource (e.g., versioning container images) using the Lock Manager action.
+This example demonstrates how to **run jobs in parallel** but enforce **sequential access** to a shared resource (e.g., versioning container images) using the Lock Queue action.
 
 ```yaml
 jobs:
@@ -137,6 +141,6 @@ We **welcome issues, ideas, and contributions**!
 
 - Have a question, bug report, or feature idea? Open an issue and start a discussion.
 - Want to improve the action? Fork the repository, make your changes, and submit a pull request.
-- Feedback, suggestions, and tips are all appreciated — every contribution helps make **Lock Manager** more reliable and useful for everyone.
+- Feedback, suggestions, and tips are all appreciated — every contribution helps make **Lock Queue** more reliable and useful for everyone.
 
 Let’s collaborate to make workflows safer, more predictable, and easier to manage!
