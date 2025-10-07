@@ -104,7 +104,7 @@ jobs:
         run: |
           echo "Building container images in parallel"
 
-  wait-for-lock:
+  sequential-work:
     runs-on: ubuntu-latest
     steps:
       # Required: checkout repository
