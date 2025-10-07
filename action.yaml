@@ -1,5 +1,8 @@
 name: Lock Manager
 description: Manage state locks natively in GitHub.
+branding:
+  icon: 'lock'
+  color: 'yellow'
 inputs:
   locks_dir:
     description: >
