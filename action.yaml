@@ -1,0 +1,38 @@
+name: Lock Manager
+description: Manage state locks natively in GitHub.
+inputs:
+  locks_dir:
+    description: >
+      Directory to store the lock file. 
+      Optional: if not provided, the branch name will be used as the directory.
+    required: false
+    default: ''
+  locks_branch:
+    description: >
+      Git branch used to store lock files. 
+      Default: "locks".
+    required: false
+    default: "locks"
+  action:
+    description: >
+      Action to perform. 
+      Allowed values: "acquire", "release", "wait".
+      This input is required.
+    required: true
+  max_wait:
+    description: >
+      Maximum time in seconds to wait for a lock when action is "wait". 
+      Must be greater than zero. 
+      Default: 3600 seconds (1 hour).
+    required: false
+    default: 3600
+  sleep_interval:
+    description: >
+      Interval in seconds between retries while waiting for a lock. 
+      Must be greater than zero. 
+      Default: 5 seconds.
+    required: false
+    default: 5
+runs:
+  using: "node24"
+  main: "dist/index.js"
