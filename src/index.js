@@ -1,9 +1,9 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { exec } from "@actions/exec";
 import { acquireLock } from "./acquire-lock.js";
 import { releaseLock } from "./release-lock.js";
 import { waitForLock } from "./wait-lock.js";
+import { configureGit } from "./helpers.js";
 
 async function run() {
   try {
@@ -28,12 +28,9 @@ async function run() {
     const actionType = core.getInput("action");
     if (!actionType) throw new Error("Input 'action' is required");
 
-    await exec("git", ["config", "user.name", github.context.actor]);
-    await exec("git", [
-      "config",
-      "user.email",
-      `${github.context.actor}@users.noreply.github.com`,
-    ]);
+    const token = core.getInput("token");
+    const actor = github.context.actor;
+    await configureGit(token, actor);
 
     switch (actionType) {
       case "acquire":
