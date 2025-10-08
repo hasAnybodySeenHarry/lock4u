@@ -1,7 +1,7 @@
 import fs from "fs";
 import * as github from "@actions/github";
 import * as core from "@actions/core";
-import { runGit, checkBranchExists } from "./helpers.js";
+import { runGit, checkBranchExists, removeLockEntry } from "./helpers.js";
 
 export async function releaseLock(lockFile, locksBranch) {
   const maxRetries = 5;
@@ -25,18 +25,24 @@ export async function releaseLock(lockFile, locksBranch) {
     }
 
     const lockContent = await fs.promises.readFile(lockFile, "utf-8");
-    const firstCommitSHAMatch = lockContent.match(/^commit_sha:\s*(\S+)/m);
-    const firstCommitSHA = firstCommitSHAMatch ? firstCommitSHAMatch[1] : null;
-
     const { sha } = github.context;
 
+    const firstCommitSHAMatch = lockContent.match(/^commit_sha:\s*(\S+)/m);
+    const firstCommitSHA = firstCommitSHAMatch ? firstCommitSHAMatch[1] : null;
     if (!firstCommitSHA || firstCommitSHA !== sha) {
-      core.notice("Lock is not owned by this commit, nothing to release");
-      return;
+      core.warning(
+        "Lock is not owned by this commit, must have given up queueing"
+      );
     }
 
-    const updatedContent = lockContent.replace(/^.*?^---$\n?/ms, "");
-    await fs.promises.writeFile(lockFile, updatedContent, "utf-8");
+    const updatedContent = removeLockEntry(lockContent, sha);
+    if (updatedContent === lockContent) {
+      core.notice(`No lock entry found for commit ${sha}. Nothing to release`);
+      return;
+    } else {
+      await fs.promises.writeFile(lockFile, updatedContent, "utf-8");
+      core.info(`Lock entry for commit ${sha} released`);
+    }
 
     await runGit(["add", lockFile]);
     await runGit(["commit", "-m", `Released lock from commit ${sha}`]);

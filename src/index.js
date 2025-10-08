@@ -50,4 +50,29 @@ async function run() {
   }
 }
 
-run();
+// run();
+
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { removeLockEntry } from "../src/helpers.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function check() {
+  const lockFilePath = path.resolve(__dirname, "../__tests__", "test-lock.txt");
+
+  try {
+    const lockContent = await fs.promises.readFile(lockFilePath, "utf-8");
+
+    const shaToRemove = "c36f3d5cbdb8614d43f6f6f739facad93f1fe977";
+    const updated = removeLockEntry(lockContent, shaToRemove);
+
+    console.log("Updated lock content:\n", updated);
+  } catch (err) {
+    console.error("Error reading lock file:", err);
+  }
+}
+
+check();

@@ -106,3 +106,29 @@ export async function buildLockEntry({
 
   return lockEntry;
 }
+
+/**
+ * Removes all lock entries for the given commit SHA from the lock content.
+ *
+ * @param {string} lockContent - The full content of the lock file.
+ * @param {string} commitSHA - The commit SHA whose entries should be removed.
+ * @returns {string} - Updated lock file content with entries removed.
+ */
+export function removeLockEntry(lockContent, commitSHA) {
+  if (!lockContent.trim()) return lockContent;
+
+  const entries = lockContent.split(/^---$/m);
+
+  const updatedEntries = entries.filter((entry) => {
+    const match = entry.match(/^commit_sha:\s*(\S+)/m);
+    return !(match && match[1] === commitSHA);
+  });
+
+  if (updatedEntries.length === entries.length) {
+    return lockContent;
+  }
+
+  return (
+    updatedEntries.join("---").trim() + (updatedEntries.length > 0 ? "\n" : "")
+  );
+}

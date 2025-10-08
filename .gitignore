@@ -16,7 +16,7 @@ build/
 coverage/
 
 *.lock.txt
-__tests__/test-lock.txt
+!__tests__/test-lock.txt
 
 .vscode/
 .idea/
