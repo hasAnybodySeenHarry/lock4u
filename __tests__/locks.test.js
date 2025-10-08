@@ -1,13 +1,16 @@
 /* eslint-disable no-undef */
-import { buildLockEntry } from "../src/helpers.js";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { buildLockEntry, removeLockEntry } from "../src/helpers.js";
 
 describe("Lock Actions", () => {});
 
-describe("Lock helpers", () => {
+describe("Lock Entry Builder", () => {
   test("buildLockEntry formats two entries correctly", async () => {
     const entry1 = await buildLockEntry({
       sha: "abc123",
-      workflow: "Test Workflow",
+      workflow: "Service CI",
       runId: 42,
       actor: "hasAnybodySeenHarry",
       commitMessage: "fix(auth): validate JWT tokens correctly (#JIRA-1234)",
@@ -15,14 +18,14 @@ describe("Lock helpers", () => {
 
     const entry2 = await buildLockEntry({
       sha: "def456",
-      workflow: "Another Workflow",
+      workflow: "Service CD",
       runId: 43,
       actor: "enoki",
       commitMessage: "feat(ui): add loading spinner (#JIRA-5678)",
     });
 
     expect(entry1).toContain("commit_sha: abc123");
-    expect(entry1).toContain("workflow: Test Workflow");
+    expect(entry1).toContain("workflow: Service CI");
     expect(entry1).toContain("run_id: 42");
     expect(entry1).toContain("actor: hasAnybodySeenHarry");
     expect(entry1).toContain("commit_message: |");
@@ -33,7 +36,7 @@ describe("Lock helpers", () => {
     expect(entry1.endsWith("---\n")).toBe(true);
 
     expect(entry2).toContain("commit_sha: def456");
-    expect(entry2).toContain("workflow: Another Workflow");
+    expect(entry2).toContain("workflow: Service CD");
     expect(entry2).toContain("run_id: 43");
     expect(entry2).toContain("actor: enoki");
     expect(entry2).toContain("commit_message: |");
@@ -46,3 +49,90 @@ describe("Lock helpers", () => {
     expect(combined).toContain("def456");
   });
 });
+
+describe("Removing Lock Entry", () => {
+  let lockContent;
+
+  beforeAll(async () => {
+    const lockFilePath = path.resolve(
+      __dirname,
+      "../__tests__",
+      "test-lock.txt"
+    );
+    lockContent = await fs.promises.readFile(lockFilePath, "utf-8");
+  });
+
+  it("removes the top entry", () => {
+    const shaToRemove = "c36f3d5cbdb8614d43f6f6f739facad93f1fe977";
+    const updated = removeLockEntry(lockContent, shaToRemove);
+
+    expect(updated).not.toContain(shaToRemove);
+
+    const entries = splitEntries(updated);
+    expect(entries.length).toBe(4);
+
+    expect(updated.trim().startsWith("timestamp: 2025-10-08T13:17:24")).toBe(
+      true
+    );
+  });
+
+  it("removes a middle entry", () => {
+    const shaToRemove = "6a3c230fb7b5f6a887bbf600db3be04db649ec8f";
+    const updated = removeLockEntry(lockContent, shaToRemove);
+
+    expect(updated).not.toContain(shaToRemove);
+
+    const entries = splitEntries(updated);
+    expect(entries.length).toBe(4);
+
+    expect(updated.trim().startsWith("timestamp: 2025-10-08T13:17:20")).toBe(
+      true
+    );
+
+    expect(updated.includes("b62234514aa554f5f4b59bb1a6c81887277a5731")).toBe(
+      true
+    );
+  });
+
+  it("removes the bottom entry", () => {
+    const shaToRemove = "b62234514aa554f5f4b59bb1a6c81887277a5731";
+    const updated = removeLockEntry(lockContent, shaToRemove);
+
+    expect(updated).not.toContain(shaToRemove);
+
+    const entries = splitEntries(updated);
+    expect(entries.length).toBe(4);
+
+    expect(updated.includes("c36f3d5cbdb8614d43f6f6f739facad93f1fe977")).toBe(
+      true
+    );
+
+    expect(updated.includes("6a3c230fb7b5f6a887bbf600db3be04db649ec8f")).toBe(
+      true
+    );
+  });
+
+  it("returns the same content if SHA is not found", () => {
+    const shaToRemove = "nonexistentSHA";
+    const updated = removeLockEntry(lockContent, shaToRemove);
+
+    expect(updated).toBe(lockContent);
+  });
+
+  it("removes all matching entries if duplicates exist", () => {
+    const shaToRemove = "3cf5a9a58c8617e59cdd3d1dbe36b0c5aaf83a94";
+    const updated = removeLockEntry(lockContent, shaToRemove);
+
+    expect(updated).not.toContain("3cf5a9a58c8617e59cdd3d1dbe36b0c5aaf83a94");
+
+    const entries = splitEntries(updated);
+    expect(entries.length).toBe(3);
+  });
+});
+
+function splitEntries(content) {
+  return content
+    .split(/^\s*---\s*$/m)
+    .map((e) => e.trim())
+    .filter(Boolean);
+}
