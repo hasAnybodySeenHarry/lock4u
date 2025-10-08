@@ -8,8 +8,8 @@ import { configureGit } from "./helpers.js";
 async function run() {
   try {
     const branch = github.context.ref.replace("refs/heads/", "");
-    const lockDir = core.getInput("locks_dir") || branch.replace(/\//g, "_");
-    const lockFile = `${lockDir}/lock.txt`;
+    const locksDir = core.getInput("locks_dir") || branch.replace(/\//g, "_");
+    const locksFile = `${locksDir}/lock.txt`;
 
     const maxWaitInput = core.getInput("max_wait");
     const maxWait = parseInt(maxWaitInput, 10);
@@ -34,13 +34,13 @@ async function run() {
 
     switch (actionType) {
       case "acquire":
-        await acquireLock(lockFile, locksBranch);
+        await acquireLock(locksFile, locksBranch);
         break;
       case "release":
-        await releaseLock(lockFile, locksBranch);
+        await releaseLock(locksFile, locksBranch);
         break;
       case "wait":
-        await waitForLock(lockFile, locksBranch, maxWait, sleepInterval);
+        await waitForLock(locksFile, locksBranch, maxWait, sleepInterval);
         break;
       default:
         throw new Error(`Unknown action type: ${actionType}`);
@@ -50,29 +50,4 @@ async function run() {
   }
 }
 
-// run();
-
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import { removeLockEntry } from "../src/helpers.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-async function check() {
-  const lockFilePath = path.resolve(__dirname, "../__tests__", "test-lock.txt");
-
-  try {
-    const lockContent = await fs.promises.readFile(lockFilePath, "utf-8");
-
-    const shaToRemove = "c36f3d5cbdb8614d43f6f6f739facad93f1fe977";
-    const updated = removeLockEntry(lockContent, shaToRemove);
-
-    console.log("Updated lock content:\n", updated);
-  } catch (err) {
-    console.error("Error reading lock file:", err);
-  }
-}
-
-check();
+run();

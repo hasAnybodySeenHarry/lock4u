@@ -49,38 +49,23 @@ export async function checkBranchExists(branch) {
     await exec("git", args);
     return true;
   } catch (err) {
-    if (err.exitCode === 2) {
-      return false;
-    } else {
-      console.error(`Git command failed: git ${args.join(" ")}`);
-      throw err;
-    }
+    // if (err.exitCode === 2) {
+    //   return false;
+    // } else {
+    //   console.error(`Git command failed: git ${args.join(" ")}`);
+    //   throw err;
+    // }
+    core.warning(`Failed to check branch existence: ${err}`);
+    return false;
   }
 }
 
-export async function getCommitMessage(sha) {
-  let output = "";
-  try {
-    await exec("git", ["log", "-1", "--pretty=%B", sha], {
-      listeners: {
-        stdout: (data) => {
-          output += data.toString();
-        },
-      },
-    });
-
-    // since git includes a trailing newline at the end of the commit message,
-    // we need to remove that trailing newline and if there's any more included
-    // with the original commit message
-    output = output.replace(/\n+$/, "");
-
-    return output
-      .split("\n")
-      .map((line) => `    ${line}`)
-      .join("\n");
-  } catch (err) {
-    return "    (no commit message)";
-  }
+export function getCommitMessage(message) {
+  return message
+    .replace(/\n+$/, "")
+    .split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n");
 }
 
 export async function buildLockEntry({
