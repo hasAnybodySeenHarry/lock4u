@@ -49,12 +49,14 @@ export async function checkBranchExists(branch) {
     await exec("git", args);
     return true;
   } catch (err) {
-    if (err.exitCode === 2) {
-      return false;
-    } else {
-      console.error(`Git command failed: git ${args.join(" ")}`);
-      throw err;
-    }
+    // if (err.exitCode === 2) {
+    //   return false;
+    // } else {
+    //   console.error(`Git command failed: git ${args.join(" ")}`);
+    //   throw err;
+    // }
+    core.warning(`Failed to check branch existence: ${err}`);
+    return false;
   }
 }
 

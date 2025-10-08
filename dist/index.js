@@ -31243,11 +31243,42 @@ var githubExports = requireGithub();
 
 var execExports = requireExec();
 
+async function configureGit(token, actor) {
+  await runGit(["config", "user.name", actor]);
+  await runGit(["config", "user.email", `${actor}@users.noreply.github.com`]);
+
+  if (!token) return;
+
+  let originUrl = "";
+  await runGit(["remote", "get-url", "origin"], {
+    listeners: {
+      stdout: (data) => {
+        originUrl += data.toString();
+      },
+    },
+  });
+
+  originUrl = originUrl.trim();
+
+  if (originUrl.startsWith("https://")) {
+    const urlWithToken = originUrl.replace(
+      /^https:\/\//,
+      `https://x-access-token:${token}@`
+    );
+    await runGit(["remote", "set-url", "origin", urlWithToken]);
+    coreExports.info("Configured origin remote to use supplied token");
+  } else {
+    coreExports.warning(
+      "Origin is not HTTPS. Supplied token cannot be used for authentication."
+    );
+  }
+}
+
 async function runGit(args, options = {}) {
   try {
     await execExports.exec("git", args, options);
     return true;
-  } catch {
+  } catch (err) {
     console.error(`Git command failed: git ${args.join(" ")}`);
     throw err;
   }
@@ -31260,38 +31291,23 @@ async function checkBranchExists(branch) {
     await execExports.exec("git", args);
     return true;
   } catch (err) {
-    if (err.exitCode === 2) {
-      return false;
-    } else {
-      console.error(`Git command failed: git ${args.join(" ")}`);
-      throw err;
-    }
+    // if (err.exitCode === 2) {
+    //   return false;
+    // } else {
+    //   console.error(`Git command failed: git ${args.join(" ")}`);
+    //   throw err;
+    // }
+    coreExports.warning(`Failed to check branch existence: ${err}`);
+    return false;
   }
 }
 
-async function getCommitMessage(sha) {
-  let output = "";
-  try {
-    await execExports.exec("git", ["log", "-1", "--pretty=%B", sha], {
-      listeners: {
-        stdout: (data) => {
-          output += data.toString();
-        },
-      },
-    });
-
-    // since git includes a trailing newline at the end of the commit message,
-    // we need to remove that trailing newline and if there's any more included
-    // with the original commit message
-    output = output.replace(/\n+$/, "");
-
-    return output
-      .split("\n")
-      .map((line) => `    ${line}`)
-      .join("\n");
-  } catch (err) {
-    return "    (no commit message)";
-  }
+function getCommitMessage(message) {
+  return message
+    .replace(/\n+$/, "")
+    .split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n");
 }
 
 async function buildLockEntry({
@@ -31318,6 +31334,32 @@ async function buildLockEntry({
   return lockEntry;
 }
 
+/**
+ * Removes all lock entries for the given commit SHA from the lock content.
+ *
+ * @param {string} lockContent - The full content of the lock file.
+ * @param {string} commitSHA - The commit SHA whose entries should be removed.
+ * @returns {string} - Updated lock file content with entries removed.
+ */
+function removeLockEntry(lockContent, commitSHA) {
+  if (!lockContent.trim()) return lockContent;
+
+  const entries = lockContent.split(/^---$/m);
+
+  const updatedEntries = entries.filter((entry) => {
+    const match = entry.match(/^commit_sha:\s*(\S+)/m);
+    return !(match && match[1] === commitSHA);
+  });
+
+  if (updatedEntries.length === entries.length) {
+    return lockContent;
+  }
+
+  return (
+    updatedEntries.join("---").trim() + (updatedEntries.length > 0 ? "\n" : "")
+  );
+}
+
 async function acquireLock(lockFile, locksBranch) {
   const maxRetries = 5;
   const retryDelay = 1000;
@@ -31326,11 +31368,11 @@ async function acquireLock(lockFile, locksBranch) {
   while (retries < maxRetries) {
     const exists = await checkBranchExists(locksBranch);
     if (exists) {
-      console.log("Branch exists → fetching and switching");
+      coreExports.info("Branch exists → fetching and switching");
       await runGit(["fetch", "origin", locksBranch]);
       await runGit(["checkout", locksBranch]);
     } else {
-      console.log("Branch does not exist → creating orphan branch");
+      coreExports.info("Branch does not exist → creating orphan branch");
       await runGit(["checkout", "--orphan", locksBranch]);
       await runGit(["rm", "-rf", "."]);
     }
@@ -31338,14 +31380,16 @@ async function acquireLock(lockFile, locksBranch) {
     const lockDir = require$$1$4.dirname(lockFile);
     await fs.promises.mkdir(lockDir, { recursive: true });
 
-    const { sha, workflow, runId, actor } = githubExports.context;
-    const commitMessage = await getCommitMessage(sha);
+    const { sha, workflow, runId, actor, payload } = githubExports.context;
+
+    const rawMessage = payload.head_commit?.message || "(no commit message)";
+    const commitMessage = getCommitMessage(rawMessage);
     const lockEntry = await buildLockEntry({
       sha,
       workflow,
       runId,
       actor,
-      commitMessage: commitMessage || "(no commit message)",
+      commitMessage,
     });
 
     if (!fs.existsSync(lockFile)) {
@@ -31361,12 +31405,12 @@ async function acquireLock(lockFile, locksBranch) {
       () => false
     );
     if (pushed) {
-      console.log("Lock acquired successfully!");
+      coreExports.info("Lock acquired successfully!");
       return;
     }
 
     retries++;
-    console.log(
+    coreExports.warning(
       `Push failed — another workflow may have modified the lock. Retrying ${retries}/${maxRetries} in ${retryDelay}ms...`
     );
 
@@ -31386,7 +31430,7 @@ async function releaseLock(lockFile, locksBranch) {
   while (retries < maxRetries) {
     const exists = await checkBranchExists(locksBranch);
     if (!exists) {
-      console.log("Branch does not exist, nothing to release");
+      coreExports.notice("Branch does not exist, nothing to release");
       return;
     }
 
@@ -31395,23 +31439,29 @@ async function releaseLock(lockFile, locksBranch) {
     await runGit(["reset", "--hard", `origin/${locksBranch}`]);
 
     if (!fs.existsSync(lockFile)) {
-      console.log("No lock file to release");
+      coreExports.notice("No lock file to release");
       return;
     }
 
     const lockContent = await fs.promises.readFile(lockFile, "utf-8");
-    const firstCommitSHAMatch = lockContent.match(/^commit_sha:\s*(\S+)/m);
-    const firstCommitSHA = firstCommitSHAMatch ? firstCommitSHAMatch[1] : null;
-
     const { sha } = githubExports.context;
 
+    const firstCommitSHAMatch = lockContent.match(/^commit_sha:\s*(\S+)/m);
+    const firstCommitSHA = firstCommitSHAMatch ? firstCommitSHAMatch[1] : null;
     if (!firstCommitSHA || firstCommitSHA !== sha) {
-      console.log("Lock is not owned by this commit, nothing to release");
-      return;
+      coreExports.warning(
+        "Lock is not owned by this commit, must have given up queueing"
+      );
     }
 
-    const updatedContent = lockContent.replace(/^.*?^---$\n?/ms, "");
-    await fs.promises.writeFile(lockFile, updatedContent, "utf-8");
+    const updatedContent = removeLockEntry(lockContent, sha);
+    if (updatedContent === lockContent) {
+      coreExports.notice(`No lock entry found for commit ${sha}. Nothing to release`);
+      return;
+    } else {
+      await fs.promises.writeFile(lockFile, updatedContent, "utf-8");
+      coreExports.info(`Lock entry for commit ${sha} released`);
+    }
 
     await runGit(["add", lockFile]);
     await runGit(["commit", "-m", `Released lock from commit ${sha}`]);
@@ -31420,11 +31470,11 @@ async function releaseLock(lockFile, locksBranch) {
       () => false
     );
     if (pushed) {
-      console.log("Lock released successfully!");
+      coreExports.info("Lock released successfully!");
       return;
     }
 
-    console.log("Push failed — retrying...");
+    coreExports.warning("Push failed — retrying...");
     retries++;
 
     await new Promise((r) => setTimeout(r, retryDelay));
@@ -31463,10 +31513,10 @@ async function waitForLock(
     const { sha } = githubExports.context;
 
     if (firstCommitSHA === sha) {
-      console.log("Lock confirmed! Proceeding...");
+      coreExports.info("Lock confirmed! Proceeding...");
       return;
     } else {
-      console.log(
+      coreExports.notice(
         `Lock held by another workflow (${firstCommitSHA}). Waiting...`
       );
       const delayInMilliSec = sleepInterval * 1000;
@@ -31483,8 +31533,8 @@ async function waitForLock(
 async function run() {
   try {
     const branch = githubExports.context.ref.replace("refs/heads/", "");
-    const lockDir = coreExports.getInput("locks_dir") || branch.replace(/\//g, "_");
-    const lockFile = `${lockDir}/lock.txt`;
+    const locksDir = coreExports.getInput("locks_dir") || branch.replace(/\//g, "_");
+    const locksFile = `${locksDir}/lock.txt`;
 
     const maxWaitInput = coreExports.getInput("max_wait");
     const maxWait = parseInt(maxWaitInput, 10);
@@ -31503,22 +31553,19 @@ async function run() {
     const actionType = coreExports.getInput("action");
     if (!actionType) throw new Error("Input 'action' is required");
 
-    await execExports.exec("git", ["config", "user.name", githubExports.context.actor]);
-    await execExports.exec("git", [
-      "config",
-      "user.email",
-      `${githubExports.context.actor}@users.noreply.github.com`,
-    ]);
+    const token = coreExports.getInput("token");
+    const actor = githubExports.context.actor;
+    await configureGit(token, actor);
 
     switch (actionType) {
       case "acquire":
-        await acquireLock(lockFile, locksBranch);
+        await acquireLock(locksFile, locksBranch);
         break;
       case "release":
-        await releaseLock(lockFile, locksBranch);
+        await releaseLock(locksFile, locksBranch);
         break;
       case "wait":
-        await waitForLock(lockFile, locksBranch, maxWait, sleepInterval);
+        await waitForLock(locksFile, locksBranch, maxWait, sleepInterval);
         break;
       default:
         throw new Error(`Unknown action type: ${actionType}`);
