@@ -1,5 +1,6 @@
 import fs from "fs";
 import * as github from "@actions/github";
+import * as core from "@actions/core";
 import { checkBranchExists, runGit } from "./helpers.js";
 
 export async function waitForLock(
@@ -32,10 +33,10 @@ export async function waitForLock(
     const { sha } = github.context;
 
     if (firstCommitSHA === sha) {
-      console.log("Lock confirmed! Proceeding...");
+      core.info("Lock confirmed! Proceeding...");
       return;
     } else {
-      console.log(
+      core.notice(
         `Lock held by another workflow (${firstCommitSHA}). Waiting...`
       );
       const delayInMilliSec = sleepInterval * 1000;

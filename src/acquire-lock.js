@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import * as github from "@actions/github";
+import * as core from "@actions/core";
 import {
   checkBranchExists,
   runGit,
@@ -16,11 +17,11 @@ export async function acquireLock(lockFile, locksBranch) {
   while (retries < maxRetries) {
     const exists = await checkBranchExists(locksBranch);
     if (exists) {
-      console.log("Branch exists → fetching and switching");
+      core.info("Branch exists → fetching and switching");
       await runGit(["fetch", "origin", locksBranch]);
       await runGit(["checkout", locksBranch]);
     } else {
-      console.log("Branch does not exist → creating orphan branch");
+      core.info("Branch does not exist → creating orphan branch");
       await runGit(["checkout", "--orphan", locksBranch]);
       await runGit(["rm", "-rf", "."]);
     }
@@ -51,12 +52,12 @@ export async function acquireLock(lockFile, locksBranch) {
       () => false
     );
     if (pushed) {
-      console.log("Lock acquired successfully!");
+      core.info("Lock acquired successfully!");
       return;
     }
 
     retries++;
-    console.log(
+    core.warning(
       `Push failed — another workflow may have modified the lock. Retrying ${retries}/${maxRetries} in ${retryDelay}ms...`
     );
 

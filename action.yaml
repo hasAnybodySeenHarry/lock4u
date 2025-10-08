@@ -4,6 +4,12 @@ branding:
   icon: 'lock'
   color: 'blue'
 inputs:
+  token:
+    description: >
+      The token to access the repository if an external repository is used to manage locks.
+      Optional: if the repository that triggered the workflow is used but must be supplied 
+      if locks should be held in an external repository.
+    required: false
   locks_dir:
     description: >
       Directory to store the lock file. 

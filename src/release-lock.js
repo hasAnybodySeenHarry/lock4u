@@ -1,5 +1,6 @@
 import fs from "fs";
 import * as github from "@actions/github";
+import * as core from "@actions/core";
 import { runGit, checkBranchExists } from "./helpers.js";
 
 export async function releaseLock(lockFile, locksBranch) {
@@ -10,7 +11,7 @@ export async function releaseLock(lockFile, locksBranch) {
   while (retries < maxRetries) {
     const exists = await checkBranchExists(locksBranch);
     if (!exists) {
-      console.log("Branch does not exist, nothing to release");
+      core.notice("Branch does not exist, nothing to release");
       return;
     }
 
@@ -19,7 +20,7 @@ export async function releaseLock(lockFile, locksBranch) {
     await runGit(["reset", "--hard", `origin/${locksBranch}`]);
 
     if (!fs.existsSync(lockFile)) {
-      console.log("No lock file to release");
+      core.notice("No lock file to release");
       return;
     }
 
@@ -30,7 +31,7 @@ export async function releaseLock(lockFile, locksBranch) {
     const { sha } = github.context;
 
     if (!firstCommitSHA || firstCommitSHA !== sha) {
-      console.log("Lock is not owned by this commit, nothing to release");
+      core.notice("Lock is not owned by this commit, nothing to release");
       return;
     }
 
@@ -44,11 +45,11 @@ export async function releaseLock(lockFile, locksBranch) {
       () => false
     );
     if (pushed) {
-      console.log("Lock released successfully!");
+      core.info("Lock released successfully!");
       return;
     }
 
-    console.log("Push failed — retrying...");
+    core.warning("Push failed — retrying...");
     retries++;
 
     await new Promise((r) => setTimeout(r, retryDelay));
