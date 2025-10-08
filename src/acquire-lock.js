@@ -29,14 +29,16 @@ export async function acquireLock(lockFile, locksBranch) {
     const lockDir = path.dirname(lockFile);
     await fs.promises.mkdir(lockDir, { recursive: true });
 
-    const { sha, workflow, runId, actor } = github.context;
-    const commitMessage = await getCommitMessage(sha);
+    const { sha, workflow, runId, actor, payload } = github.context;
+
+    const rawMessage = payload.head_commit?.message || "(no commit message)";
+    const commitMessage = getCommitMessage(rawMessage);
     const lockEntry = await buildLockEntry({
       sha,
       workflow,
       runId,
       actor,
-      commitMessage: commitMessage || "(no commit message)",
+      commitMessage,
     });
 
     if (!fs.existsSync(lockFile)) {
