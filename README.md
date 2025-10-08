@@ -25,6 +25,12 @@ With this action, workflows wait for their turn by polling the lock file, ensuri
 
 ## Inputs
 
+### `token`
+
+- **Optional**
+- GitHub token for accessing a different or private repository.
+- Default: `""` (auto-used for same-repo with persist-credentials: true)
+
 ### `locks_dir`
 
 - **Optional**
