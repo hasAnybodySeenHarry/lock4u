@@ -3,7 +3,7 @@ import * as github from "@actions/github";
 import * as core from "@actions/core";
 import { runGit, checkBranchExists, removeLockEntry } from "./helpers.js";
 
-export async function releaseLock(lockFile, locksBranch) {
+export async function releaseLock(locksFile, locksBranch) {
   const maxRetries = 5;
   const retryDelay = 1000;
   let retries = 0;
@@ -19,12 +19,12 @@ export async function releaseLock(lockFile, locksBranch) {
     await runGit(["checkout", locksBranch]);
     await runGit(["reset", "--hard", `origin/${locksBranch}`]);
 
-    if (!fs.existsSync(lockFile)) {
+    if (!fs.existsSync(locksFile)) {
       core.notice("No lock file to release");
       return;
     }
 
-    const lockContent = await fs.promises.readFile(lockFile, "utf-8");
+    const lockContent = await fs.promises.readFile(locksFile, "utf-8");
     const { sha } = github.context;
 
     const firstCommitSHAMatch = lockContent.match(/^commit_sha:\s*(\S+)/m);
@@ -40,11 +40,11 @@ export async function releaseLock(lockFile, locksBranch) {
       core.notice(`No lock entry found for commit ${sha}. Nothing to release`);
       return;
     } else {
-      await fs.promises.writeFile(lockFile, updatedContent, "utf-8");
+      await fs.promises.writeFile(locksFile, updatedContent, "utf-8");
       core.info(`Lock entry for commit ${sha} released`);
     }
 
-    await runGit(["add", lockFile]);
+    await runGit(["add", locksFile]);
     await runGit(["commit", "-m", `Released lock from commit ${sha}`]);
 
     const pushed = await runGit(["push", "origin", locksBranch]).catch(

@@ -9,7 +9,7 @@ import {
   getCommitMessage,
 } from "./helpers.js";
 
-export async function acquireLock(lockFile, locksBranch) {
+export async function acquireLock(locksFile, locksBranch) {
   const maxRetries = 5;
   const retryDelay = 1000;
   let retries = 0;
@@ -26,8 +26,8 @@ export async function acquireLock(lockFile, locksBranch) {
       await runGit(["rm", "-rf", "."]);
     }
 
-    const lockDir = path.dirname(lockFile);
-    await fs.promises.mkdir(lockDir, { recursive: true });
+    const locksDir = path.dirname(locksFile);
+    await fs.promises.mkdir(locksDir, { recursive: true });
 
     const { sha, workflow, runId, actor, payload } = github.context;
 
@@ -41,13 +41,13 @@ export async function acquireLock(lockFile, locksBranch) {
       commitMessage,
     });
 
-    if (!fs.existsSync(lockFile)) {
-      fs.writeFileSync(lockFile, lockEntry, "utf-8");
+    if (!fs.existsSync(locksFile)) {
+      fs.writeFileSync(locksFile, lockEntry, "utf-8");
     } else {
-      fs.appendFileSync(lockFile, lockEntry, "utf-8");
+      fs.appendFileSync(locksFile, lockEntry, "utf-8");
     }
 
-    await runGit(["add", lockFile]);
+    await runGit(["add", locksFile]);
     await runGit(["commit", "-m", `Acquired lock from commit ${sha}`]);
 
     const pushed = await runGit(["push", "origin", locksBranch]).catch(

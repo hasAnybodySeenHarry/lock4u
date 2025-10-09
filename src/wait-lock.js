@@ -4,7 +4,7 @@ import * as core from "@actions/core";
 import { checkBranchExists, runGit } from "./helpers.js";
 
 export async function waitForLock(
-  lockFile,
+  locksFile,
   locksBranch,
   maxWait,
   sleepInterval
@@ -22,12 +22,12 @@ export async function waitForLock(
     await runGit(["fetch", "origin", locksBranch]);
     await runGit(["reset", "--hard", `origin/${locksBranch}`]);
 
-    const lockContent = await fs.promises.readFile(lockFile, "utf-8");
+    const lockContent = await fs.promises.readFile(locksFile, "utf-8");
     const firstCommitSHAMatch = lockContent.match(/^commit_sha:\s*(\S+)/m);
     const firstCommitSHA = firstCommitSHAMatch ? firstCommitSHAMatch[1] : null;
 
     if (!firstCommitSHA) {
-      throw new Error(`Lock file ${lockFile} is missing commit SHA`);
+      throw new Error(`Lock file ${locksFile} is missing commit SHA`);
     }
 
     const { sha } = github.context;
