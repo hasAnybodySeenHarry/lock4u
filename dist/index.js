@@ -31438,8 +31438,8 @@ async function acquireLock(locksFile, locksBranch) {
     const { sha, workflow, runId, actor, ref_name, payload, repository } =
       githubExports.context;
 
-    coreExports.info("With");
-    coreExports.info(githubExports.context);
+    coreExports.info("GitHub context:");
+    coreExports.info(JSON.stringify(githubExports.context, null, 2));
 
     const [orgName, repoName] = repository.split("/");
     const ref = `${orgName}/${repoName}/${ref_name}`;
