@@ -2,12 +2,7 @@ import fs from "fs";
 import path from "path";
 import * as github from "@actions/github";
 import * as core from "@actions/core";
-import {
-  checkBranchExists,
-  runGit,
-  buildLockEntry,
-  getCommitMessage,
-} from "./helpers.js";
+import { checkBranchExists, runGit, buildLockEntry } from "./helpers.js";
 
 export async function acquireLock(locksFile, locksBranch) {
   const maxRetries = 5;
@@ -29,15 +24,20 @@ export async function acquireLock(locksFile, locksBranch) {
     const locksDir = path.dirname(locksFile);
     await fs.promises.mkdir(locksDir, { recursive: true });
 
-    const { sha, workflow, runId, actor, payload } = github.context;
+    const { sha, workflow, runId, actor, ref_name, payload, repository } =
+      github.context;
 
-    const rawMessage = payload.head_commit?.message || "(no commit message)";
-    const commitMessage = getCommitMessage(rawMessage);
+    const [orgName, repoName] = repository.split("/");
+    const ref = `${orgName}/${repoName}/${ref_name}`;
+
+    const commitMessage = payload.head_commit?.message || "(no commit message)";
+
     const lockEntry = await buildLockEntry({
       sha,
       workflow,
       runId,
       actor,
+      ref,
       commitMessage,
     });
 

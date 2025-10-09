@@ -32,11 +32,12 @@ export async function configureGit(token, actor) {
   }
 }
 
-export async function runGit(args, options = {}) {
+export async function runGit(args, options = {}, allowNonZero = false) {
   try {
     await exec("git", args, options);
     return true;
   } catch (err) {
+    if (allowNonZero) return false;
     console.error(`Git command failed: git ${args.join(" ")}`);
     throw err;
   }
@@ -60,23 +61,18 @@ export async function checkBranchExists(branch) {
   }
 }
 
-export function getCommitMessage(message) {
-  return message
-    .replace(/\n+$/, "")
-    .split("\n")
-    .map((line) => `    ${line}`)
-    .join("\n");
-}
-
 export async function buildLockEntry({
   sha,
   workflow,
   runId,
   actor,
+  ref,
   commitMessage,
 }) {
   const timestamp = new Date().toISOString();
+
   const formattedMessage = commitMessage
+    .replace(/\n+$/, "")
     .split("\n")
     .map((line) => `    ${line.trim()}`)
     .join("\n");
@@ -87,6 +83,7 @@ export async function buildLockEntry({
     `workflow: ${workflow}\n` +
     `run_id: ${runId}\n` +
     `actor: ${actor}\n` +
+    `ref: ${ref}\n` +
     `commit_message: |\n${formattedMessage}\n---\n`;
 
   return lockEntry;
@@ -116,4 +113,62 @@ export function removeLockEntry(lockContent, commitSHA) {
   return (
     updatedEntries.join("---").trim() + (updatedEntries.length > 0 ? "\n" : "")
   );
+}
+
+/**
+ * Reorder lock entries by removing self entry and inserting it after the last ancestor
+ * @param {string[]} lockEntries - Array of lock entries
+ * @param {number} myIndex - Index of self entry
+ * @param {number} lastAncestorIndex - Index of the last ancestor below self
+ * @param {string} self - The lock entry content to insert
+ * @returns {string[]} - Updated lock entries
+ */
+export function reorderLockEntries(
+  lockEntries,
+  myIndex,
+  lastAncestorIndex,
+  self
+) {
+  if (!Array.isArray(lockEntries)) {
+    throw new TypeError("lockEntries must be an array");
+  }
+  if (
+    myIndex < 0 ||
+    lastAncestorIndex < 0 ||
+    lastAncestorIndex >= lockEntries.length ||
+    myIndex >= lockEntries.length
+  ) {
+    throw new RangeError("myIndex out of range");
+  }
+
+  if (
+    lastAncestorIndex === myIndex || // technically, not a valid request
+    lastAncestorIndex < myIndex // we're already behind the last ancestor
+  ) {
+    return lockEntries;
+  }
+
+  const updatedEntries = [...lockEntries];
+
+  updatedEntries.splice(myIndex, 1);
+
+  const lastAncestorNewIndex = lastAncestorIndex - 1;
+  const insertionIndex = lastAncestorNewIndex + 1;
+  updatedEntries.splice(insertionIndex, 0, self);
+
+  return updatedEntries;
+}
+
+/**
+ * Join lock entries into a properly formatted lock file string
+ * with "---" separators and a trailing newline if non-empty.
+ *
+ * @param {string[]} entries - Array of lock entry strings
+ * @returns {string} - Formatted lock file content
+ */
+export function formatLockEntries(entries) {
+  if (!Array.isArray(entries)) {
+    throw new TypeError("entries must be an array");
+  }
+  return entries.join("\n---\n").trim() + (entries.length > 0 ? "\n" : "");
 }
