@@ -31410,7 +31410,7 @@ function formatLockEntries(entries) {
   if (!Array.isArray(entries)) {
     throw new TypeError("entries must be an array");
   }
-  return entries.join("\n---\n").trim() + (entries.length > 0 ? "\n" : "");
+  return entries.join("\n---\n").trim() + (entries.length > 0 ? "\n---\n" : "");
 }
 
 function splitEntries(content) {
