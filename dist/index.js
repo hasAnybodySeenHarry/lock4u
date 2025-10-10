@@ -31241,80 +31241,6 @@ function requireGithub () {
 
 var githubExports = requireGithub();
 
-var execExports = requireExec();
-
-async function configureGit(token, actor) {
-  await runGit(["config", "user.name", actor]);
-  await runGit(["config", "user.email", `${actor}@users.noreply.github.com`]);
-
-  if (!token) return;
-
-  let originUrl = "";
-  await runGit(["remote", "get-url", "origin"], {
-    listeners: {
-      stdout: (data) => {
-        originUrl += data.toString();
-      },
-    },
-  });
-
-  originUrl = originUrl.trim();
-
-  if (originUrl.startsWith("https://")) {
-    const urlWithToken = originUrl.replace(
-      /^https:\/\//,
-      `https://x-access-token:${token}@`
-    );
-    await runGit(["remote", "set-url", "origin", urlWithToken]);
-    coreExports.info("Configured origin remote to use supplied token");
-  } else {
-    coreExports.warning(
-      "Origin is not HTTPS. Supplied token cannot be used for authentication."
-    );
-  }
-}
-
-async function isShallowRepo() {
-  let output = "";
-  await execExports.exec("git", ["rev-parse", "--is-shallow-repository"], {
-    listeners: {
-      stdout: (data) => {
-        output += data.toString();
-      },
-    },
-  });
-  return output.trim() === "true";
-}
-
-async function runGit(args, options = {}, allowNonZero = false) {
-  try {
-    await execExports.exec("git", args, options);
-    return true;
-  } catch (err) {
-    if (allowNonZero) return false;
-    console.error(`Git command failed: git ${args.join(" ")}`);
-    throw err;
-  }
-}
-
-async function checkBranchExists(branch) {
-  const args = ["ls-remote", "--exit-code", "--heads", "origin", branch];
-
-  try {
-    await execExports.exec("git", args);
-    return true;
-  } catch (err) {
-    // if (err.exitCode === 2) {
-    //   return false;
-    // } else {
-    //   console.error(`Git command failed: git ${args.join(" ")}`);
-    //   throw err;
-    // }
-    coreExports.warning(`Failed to check branch existence: ${err}`);
-    return false;
-  }
-}
-
 async function buildLockEntry({
   sha,
   workflow,
@@ -31432,6 +31358,74 @@ function splitEntries(content) {
     .filter(Boolean);
 }
 
+var execExports = requireExec();
+
+async function configureGit(token, actor) {
+  await runGit(["config", "user.name", actor]);
+  await runGit(["config", "user.email", `${actor}@users.noreply.github.com`]);
+
+  if (!token) return;
+
+  let originUrl = "";
+  await runGit(["remote", "get-url", "origin"], {
+    listeners: {
+      stdout: (data) => {
+        originUrl += data.toString();
+      },
+    },
+  });
+
+  originUrl = originUrl.trim();
+
+  if (originUrl.startsWith("https://")) {
+    const urlWithToken = originUrl.replace(
+      /^https:\/\//,
+      `https://x-access-token:${token}@`
+    );
+    await runGit(["remote", "set-url", "origin", urlWithToken]);
+    coreExports.info("Configured origin remote to use supplied token");
+  } else {
+    coreExports.warning(
+      "Origin is not HTTPS. Supplied token cannot be used for authentication."
+    );
+  }
+}
+
+async function isShallowRepo() {
+  let output = "";
+  await execExports.exec("git", ["rev-parse", "--is-shallow-repository"], {
+    listeners: {
+      stdout: (data) => {
+        output += data.toString();
+      },
+    },
+  });
+  return output.trim() === "true";
+}
+
+async function runGit(args, options = {}, allowNonZero = false) {
+  try {
+    await execExports.exec("git", args, options);
+    return true;
+  } catch (err) {
+    if (allowNonZero) return false;
+    console.error(`Git command failed: git ${args.join(" ")}`);
+    throw err;
+  }
+}
+
+async function checkBranchExists(branch) {
+  const args = ["ls-remote", "--exit-code", "--heads", "origin", branch];
+
+  try {
+    await execExports.exec("git", args);
+    return true;
+  } catch (err) {
+    coreExports.warning(`Failed to check branch existence: ${err}`);
+    return false;
+  }
+}
+
 async function acquireLock(locksFile, locksBranch) {
   const maxRetries = 5;
   const retryDelay = 1000;
@@ -31511,9 +31505,7 @@ async function releaseLock(locksFile, locksBranch) {
       return;
     }
 
-    await runGit(["fetch", "origin", locksBranch]);
-    await runGit(["checkout", locksBranch]);
-    await runGit(["reset", "--hard", `origin/${locksBranch}`]);
+    await syncBranch(locksBranch);
 
     if (!fs.existsSync(locksFile)) {
       coreExports.notice("No lock file to release");
@@ -31565,7 +31557,7 @@ async function waitForLock(
   locksBranch,
   maxWait,
   sleepInterval,
-  strictMode = true
+  stepDown
 ) {
   let elapsed = 0;
 
@@ -31577,9 +31569,7 @@ async function waitForLock(
   }
 
   while (elapsed < maxWait) {
-    await runGit(["fetch", "origin", locksBranch]);
-    await runGit(["checkout", locksBranch]);
-    await runGit(["reset", "--hard", `origin/${locksBranch}`]);
+    await syncBranch(locksBranch);
 
     const lockContent = await fs.promises.readFile(locksFile, "utf-8");
     const headSHAMatch = lockContent.match(/^commit_sha:\s*(\S+)/m);
@@ -31591,7 +31581,7 @@ async function waitForLock(
 
     const { sha, payload, ref } = githubExports.context;
 
-    if (strictMode) {
+    if (stepDown) {
       const [orgName, repoName] = payload.repository.full_name.split("/");
       const branchName = ref.split("/").pop();
       const myRef = `${orgName}/${repoName}/${branchName}`;
@@ -31700,42 +31690,76 @@ async function waitForLock(
   }
 }
 
+const INPUTS = {
+  TOKEN: "token",
+  LOCKS_DIR: "locks_dir",
+  LOCKS_BRANCH: "locks_branch",
+  ACTION: "action",
+  MAX_WAIT: "max_wait",
+  SLEEP_INTERVAL: "sleep_interval",
+  STEP_DOWN: "step_down",
+};
+
+const ACTIONS = {
+  ACQUIRE: "acquire",
+  RELEASE: "release",
+  WAIT: "wait",
+};
+
 async function run() {
   try {
     const branch = githubExports.context.ref.replace("refs/heads/", "");
-    const locksDir = coreExports.getInput("locks_dir") || branch.replace(/\//g, "_");
+    const locksDir =
+      coreExports.getInput(INPUTS.LOCKS_DIR) || branch.replace(/\//g, "_");
     const locksFile = `${locksDir}/lock.txt`;
 
-    const maxWaitInput = coreExports.getInput("max_wait");
+    const maxWaitInput = coreExports.getInput(INPUTS.MAX_WAIT);
     const maxWait = parseInt(maxWaitInput, 10);
     if (isNaN(maxWait) || maxWait <= 0) {
-      throw new Error(`Invalid max_wait value: ${maxWaitInput}`);
+      throw new Error(`Invalid ${INPUTS.MAX_WAIT} value: ${maxWaitInput}`);
     }
 
-    const sleepIntervalInput = coreExports.getInput("sleep_interval");
+    const sleepIntervalInput = coreExports.getInput(INPUTS.SLEEP_INTERVAL);
     const sleepInterval = parseInt(sleepIntervalInput, 10);
     if (isNaN(sleepInterval) || sleepInterval <= 0) {
-      throw new Error(`Invalid sleep_interval value: ${sleepInterval}`);
+      throw new Error(
+        `Invalid ${INPUTS.SLEEP_INTERVAL} value: ${sleepInterval}`
+      );
     }
 
-    const locksBranch = coreExports.getInput("locks_branch");
+    const locksBranch = coreExports.getInput(INPUTS.LOCKS_BRANCH);
 
-    const actionType = coreExports.getInput("action");
-    if (!actionType) throw new Error("Input 'action' is required");
+    const actionType = coreExports.getInput(INPUTS.ACTION);
+    if (!actionType) throw new Error(`Input '${INPUTS.ACTION}' is required`);
 
-    const token = coreExports.getInput("token");
+    const stepDownInput = coreExports.getInput(INPUTS.STEP_DOWN);
+    const stepDown = stepDownInput?.toLowerCase() === "true";
+
+    if (stepDown && actionType !== ACTIONS.WAIT) {
+      throw new Error(
+        `'${INPUTS.STEP_DOWN}' can only be used when action is '${ACTIONS.WAIT}'`
+      );
+    }
+
+    const token = coreExports.getInput(INPUTS.TOKEN);
     const actor = githubExports.context.actor;
     await configureGit(token, actor);
 
     switch (actionType) {
-      case "acquire":
+      case ACTIONS.ACQUIRE:
         await acquireLock(locksFile, locksBranch);
         break;
-      case "release":
+      case ACTIONS.RELEASE:
         await releaseLock(locksFile, locksBranch);
         break;
-      case "wait":
-        await waitForLock(locksFile, locksBranch, maxWait, sleepInterval);
+      case ACTIONS.WAIT:
+        await waitForLock(
+          locksFile,
+          locksBranch,
+          maxWait,
+          sleepInterval,
+          stepDown
+        );
         break;
       default:
         throw new Error(`Unknown action type: ${actionType}`);
