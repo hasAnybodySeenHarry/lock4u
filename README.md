@@ -91,10 +91,10 @@ In repositories where workflows may be triggered on **descendant commits arrivin
 ### `step_down`
 
 - Optional boolean flag for ancestry-aware voluntary demotion in the lock queue.
-- When action is "wait", if set to "true" (case-insensitive), the workflow voluntarily steps down if there's a lock behind it for a prior ancestor commit.
+- When action is `"wait"`, if set to `"true"` (case-insensitive), the workflow voluntarily steps down if there's a lock behind it for a prior ancestor commit.
 - **Important**: This only works for entries on the same branch; locks on other branches are ignored.
 - **Performance note**: Enabling this incurs additional Git operations (fetching commit history) for ancestry checks, which may slightly slow down the workflow.
-- Any value other than "true" (or empty) defaults to false.
+- Any value other than `"true"` (or empty) defaults to false.
 - Default: `"false"`
 
 ---
