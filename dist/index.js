@@ -31352,9 +31352,7 @@ function removeLockEntry(lockContent, commitSHA) {
     return lockContent;
   }
 
-  return (
-    updatedEntries.join("---").trim() + (updatedEntries.length > 0 ? "\n" : "")
-  );
+  return formatLockEntries(updatedEntries);
 }
 
 /**
