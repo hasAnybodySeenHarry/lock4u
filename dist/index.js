@@ -31241,6 +31241,123 @@ function requireGithub () {
 
 var githubExports = requireGithub();
 
+async function buildLockEntry({
+  sha,
+  workflow,
+  runId,
+  actor,
+  lockGroup,
+  commitMessage,
+}) {
+  const timestamp = new Date().toISOString();
+
+  const formattedMessage = commitMessage
+    .replace(/\n+$/, "")
+    .split("\n")
+    .map((line) => `    ${line.trim()}`)
+    .join("\n");
+
+  const lockEntry =
+    `timestamp: ${timestamp}\n` +
+    `commit_sha: ${sha}\n` +
+    `workflow: ${workflow}\n` +
+    `run_id: ${runId}\n` +
+    `actor: ${actor}\n` +
+    `lockGroup: ${lockGroup}\n` +
+    `commit_message: |\n${formattedMessage}\n---\n`;
+
+  return lockEntry;
+}
+
+/**
+ * Removes all lock entries for the given commit SHA from the lock content.
+ *
+ * @param {string} lockContent - The full content of the lock file.
+ * @param {string} commitSHA - The commit SHA whose entries should be removed.
+ * @returns {string} - Updated lock file content with entries removed.
+ */
+function removeLockEntry(lockContent, commitSHA) {
+  if (!lockContent.trim()) return lockContent;
+
+  const entries = splitEntries(lockContent);
+
+  const updatedEntries = entries.filter((entry) => {
+    const match = entry.match(/^commit_sha:\s*(\S+)/m);
+    return !(match && match[1] === commitSHA);
+  });
+
+  if (updatedEntries.length === entries.length) {
+    return lockContent;
+  }
+
+  return formatLockEntries(updatedEntries);
+}
+
+/**
+ * Reorder lock entries by removing self entry and inserting it after the last ancestor
+ * @param {string[]} lockEntries - Array of lock entries
+ * @param {number} myIndex - Index of self entry
+ * @param {number} lastAncestorIndex - Index of the last ancestor below self
+ * @param {string} self - The lock entry content to insert
+ * @returns {string[]} - Updated lock entries
+ */
+function reorderLockEntries(
+  lockEntries,
+  myIndex,
+  lastAncestorIndex,
+  self
+) {
+  if (!Array.isArray(lockEntries)) {
+    throw new TypeError("lockEntries must be an array");
+  }
+  if (
+    myIndex < 0 ||
+    lastAncestorIndex < 0 ||
+    lastAncestorIndex >= lockEntries.length ||
+    myIndex >= lockEntries.length
+  ) {
+    throw new RangeError("myIndex out of range");
+  }
+
+  if (
+    lastAncestorIndex === myIndex || // technically, not a valid request
+    lastAncestorIndex < myIndex // we're already behind the last ancestor
+  ) {
+    return lockEntries;
+  }
+
+  const updatedEntries = [...lockEntries];
+
+  updatedEntries.splice(myIndex, 1);
+
+  const lastAncestorNewIndex = lastAncestorIndex - 1;
+  const insertionIndex = lastAncestorNewIndex + 1;
+  updatedEntries.splice(insertionIndex, 0, self);
+
+  return updatedEntries;
+}
+
+/**
+ * Join lock entries into a properly formatted lock file string
+ * with "---" separators and a trailing newline if non-empty.
+ *
+ * @param {string[]} entries - Array of lock entry strings
+ * @returns {string} - Formatted lock file content
+ */
+function formatLockEntries(entries) {
+  if (!Array.isArray(entries)) {
+    throw new TypeError("entries must be an array");
+  }
+  return entries.join("\n---\n").trim() + (entries.length > 0 ? "\n---\n" : "");
+}
+
+function splitEntries(content) {
+  return content
+    .split(/^\s*---\s*$/m)
+    .map((e) => e.trim())
+    .filter(Boolean);
+}
+
 var execExports = requireExec();
 
 async function configureGit(token, actor) {
@@ -31274,11 +31391,24 @@ async function configureGit(token, actor) {
   }
 }
 
-async function runGit(args, options = {}) {
+async function isShallowRepo() {
+  let output = "";
+  await execExports.exec("git", ["rev-parse", "--is-shallow-repository"], {
+    listeners: {
+      stdout: (data) => {
+        output += data.toString();
+      },
+    },
+  });
+  return output.trim() === "true";
+}
+
+async function runGit(args, options = {}, allowNonZero = false) {
   try {
     await execExports.exec("git", args, options);
     return true;
   } catch (err) {
+    if (allowNonZero) return false;
     console.error(`Git command failed: git ${args.join(" ")}`);
     throw err;
   }
@@ -31291,76 +31421,18 @@ async function checkBranchExists(branch) {
     await execExports.exec("git", args);
     return true;
   } catch (err) {
-    // if (err.exitCode === 2) {
-    //   return false;
-    // } else {
-    //   console.error(`Git command failed: git ${args.join(" ")}`);
-    //   throw err;
-    // }
     coreExports.warning(`Failed to check branch existence: ${err}`);
     return false;
   }
 }
 
-function getCommitMessage(message) {
-  return message
-    .replace(/\n+$/, "")
-    .split("\n")
-    .map((line) => `    ${line}`)
-    .join("\n");
+async function syncBranch(branch) {
+  await runGit(["fetch", "origin", branch]);
+  await runGit(["checkout", branch]);
+  await runGit(["reset", "--hard", `origin/${branch}`]);
 }
 
-async function buildLockEntry({
-  sha,
-  workflow,
-  runId,
-  actor,
-  commitMessage,
-}) {
-  const timestamp = new Date().toISOString();
-  const formattedMessage = commitMessage
-    .split("\n")
-    .map((line) => `    ${line.trim()}`)
-    .join("\n");
-
-  const lockEntry =
-    `timestamp: ${timestamp}\n` +
-    `commit_sha: ${sha}\n` +
-    `workflow: ${workflow}\n` +
-    `run_id: ${runId}\n` +
-    `actor: ${actor}\n` +
-    `commit_message: |\n${formattedMessage}\n---\n`;
-
-  return lockEntry;
-}
-
-/**
- * Removes all lock entries for the given commit SHA from the lock content.
- *
- * @param {string} lockContent - The full content of the lock file.
- * @param {string} commitSHA - The commit SHA whose entries should be removed.
- * @returns {string} - Updated lock file content with entries removed.
- */
-function removeLockEntry(lockContent, commitSHA) {
-  if (!lockContent.trim()) return lockContent;
-
-  const entries = lockContent.split(/^---$/m);
-
-  const updatedEntries = entries.filter((entry) => {
-    const match = entry.match(/^commit_sha:\s*(\S+)/m);
-    return !(match && match[1] === commitSHA);
-  });
-
-  if (updatedEntries.length === entries.length) {
-    return lockContent;
-  }
-
-  return (
-    updatedEntries.join("---").trim() + (updatedEntries.length > 0 ? "\n" : "")
-  );
-}
-
-async function acquireLock(lockFile, locksBranch) {
+async function acquireLock(locksFile, locksBranch) {
   const maxRetries = 5;
   const retryDelay = 1000;
   let retries = 0;
@@ -31377,28 +31449,33 @@ async function acquireLock(lockFile, locksBranch) {
       await runGit(["rm", "-rf", "."]);
     }
 
-    const lockDir = require$$1$4.dirname(lockFile);
-    await fs.promises.mkdir(lockDir, { recursive: true });
+    const locksDir = require$$1$4.dirname(locksFile);
+    await fs.promises.mkdir(locksDir, { recursive: true });
 
-    const { sha, workflow, runId, actor, payload } = githubExports.context;
+    const { sha, workflow, runId, actor, ref, payload } = githubExports.context;
 
-    const rawMessage = payload.head_commit?.message || "(no commit message)";
-    const commitMessage = getCommitMessage(rawMessage);
+    const [orgName, repoName] = payload.repository.full_name.split("/");
+    const branchName = ref.split("/").pop();
+    const lockGroup = `${orgName}/${repoName}/${branchName}`;
+
+    const commitMessage = payload.head_commit?.message || "(no commit message)";
+
     const lockEntry = await buildLockEntry({
       sha,
       workflow,
       runId,
       actor,
+      lockGroup,
       commitMessage,
     });
 
-    if (!fs.existsSync(lockFile)) {
-      fs.writeFileSync(lockFile, lockEntry, "utf-8");
+    if (!fs.existsSync(locksFile)) {
+      fs.writeFileSync(locksFile, lockEntry, "utf-8");
     } else {
-      fs.appendFileSync(lockFile, lockEntry, "utf-8");
+      fs.appendFileSync(locksFile, lockEntry, "utf-8");
     }
 
-    await runGit(["add", lockFile]);
+    await runGit(["add", locksFile]);
     await runGit(["commit", "-m", `Acquired lock from commit ${sha}`]);
 
     const pushed = await runGit(["push", "origin", locksBranch]).catch(
@@ -31422,7 +31499,7 @@ async function acquireLock(lockFile, locksBranch) {
   throw new Error(`Failed to acquire lock after ${maxRetries} attempts`);
 }
 
-async function releaseLock(lockFile, locksBranch) {
+async function releaseLock(locksFile, locksBranch) {
   const maxRetries = 5;
   const retryDelay = 1000;
   let retries = 0;
@@ -31434,16 +31511,14 @@ async function releaseLock(lockFile, locksBranch) {
       return;
     }
 
-    await runGit(["fetch", "origin", locksBranch]);
-    await runGit(["checkout", locksBranch]);
-    await runGit(["reset", "--hard", `origin/${locksBranch}`]);
+    await syncBranch(locksBranch);
 
-    if (!fs.existsSync(lockFile)) {
+    if (!fs.existsSync(locksFile)) {
       coreExports.notice("No lock file to release");
       return;
     }
 
-    const lockContent = await fs.promises.readFile(lockFile, "utf-8");
+    const lockContent = await fs.promises.readFile(locksFile, "utf-8");
     const { sha } = githubExports.context;
 
     const firstCommitSHAMatch = lockContent.match(/^commit_sha:\s*(\S+)/m);
@@ -31459,11 +31534,11 @@ async function releaseLock(lockFile, locksBranch) {
       coreExports.notice(`No lock entry found for commit ${sha}. Nothing to release`);
       return;
     } else {
-      await fs.promises.writeFile(lockFile, updatedContent, "utf-8");
+      await fs.promises.writeFile(locksFile, updatedContent, "utf-8");
       coreExports.info(`Lock entry for commit ${sha} released`);
     }
 
-    await runGit(["add", lockFile]);
+    await runGit(["add", locksFile]);
     await runGit(["commit", "-m", `Released lock from commit ${sha}`]);
 
     const pushed = await runGit(["push", "origin", locksBranch]).catch(
@@ -31484,10 +31559,11 @@ async function releaseLock(lockFile, locksBranch) {
 }
 
 async function waitForLock(
-  lockFile,
+  locksFile,
   locksBranch,
   maxWait,
-  sleepInterval
+  sleepInterval,
+  stepDown
 ) {
   let elapsed = 0;
 
@@ -31499,26 +31575,116 @@ async function waitForLock(
   }
 
   while (elapsed < maxWait) {
-    await runGit(["fetch", "origin", locksBranch]);
-    await runGit(["reset", "--hard", `origin/${locksBranch}`]);
+    await syncBranch(locksBranch);
 
-    const lockContent = await fs.promises.readFile(lockFile, "utf-8");
-    const firstCommitSHAMatch = lockContent.match(/^commit_sha:\s*(\S+)/m);
-    const firstCommitSHA = firstCommitSHAMatch ? firstCommitSHAMatch[1] : null;
+    const lockContent = await fs.promises.readFile(locksFile, "utf-8");
+    const headSHAMatch = lockContent.match(/^commit_sha:\s*(\S+)/m);
+    const headSHA = headSHAMatch ? headSHAMatch[1] : null;
 
-    if (!firstCommitSHA) {
-      throw new Error(`Lock file ${lockFile} is missing commit SHA`);
+    if (!headSHA) {
+      throw new Error(`Lock file ${locksFile} is missing commit SHA`);
     }
 
-    const { sha } = githubExports.context;
+    const { sha, payload, ref } = githubExports.context;
 
-    if (firstCommitSHA === sha) {
+    if (stepDown) {
+      const [orgName, repoName] = payload.repository.full_name.split("/");
+      const branchName = ref.split("/").pop();
+      const myRef = `${orgName}/${repoName}/${branchName}`;
+
+      const lockEntries = splitEntries(lockContent);
+
+      let needsStepDown = false;
+      let lastAncestorIndex = -1;
+
+      const myIndex = lockEntries.findIndex(
+        (e) => e.match(/^commit_sha:\s*(\S+)/m)?.[1] === sha
+      );
+      if (myIndex === -1) throw new Error("Self entry not found in lock file");
+
+      let fetchedMyRef = false;
+
+      for (let i = myIndex + 1; i < lockEntries.length; i++) {
+        const entry = lockEntries[i];
+        const entrySHA = entry.match(/^commit_sha:\s*(\S+)/m)?.[1];
+        const entryRef = entry.match(/^lockGroup:\s*(\S+)/m)?.[1];
+
+        coreExports.info(`Looping entry index ${i}: SHA=${entrySHA}, REF=${entryRef}`);
+
+        if (entryRef === myRef && entrySHA !== sha) {
+          coreExports.info(`Matching same branch ref: ${entryRef}, SHA=${entrySHA}`);
+
+          if (!fetchedMyRef) {
+            coreExports.info(`Fetching branch ${branchName} for ancestry check`);
+            const isShallow = await isShallowRepo();
+
+            if (isShallow) {
+              coreExports.info("Repository is shallow.");
+              await runGit(["fetch", "--unshallow", "origin", branchName]);
+            } else {
+              coreExports.info("Repository already has full history.");
+              await runGit(["fetch", "origin", branchName]);
+            }
+
+            fetchedMyRef = true;
+          }
+
+          const isAncestor = await runGit(
+            ["merge-base", "--is-ancestor", entrySHA, sha],
+            {},
+            true
+          );
+
+          if (isAncestor) {
+            coreExports.info(
+              `Ancestor found! ${entrySHA} is an ancestor of us, ${sha}`
+            );
+            needsStepDown = true;
+            lastAncestorIndex = i;
+          }
+        }
+      }
+
+      if (needsStepDown) {
+        coreExports.notice(`Voluntarily stepping down. Reordering...`);
+
+        const self = lockEntries[myIndex];
+
+        const updatedEntries = reorderLockEntries(
+          lockEntries,
+          myIndex,
+          lastAncestorIndex,
+          self
+        );
+        const updatedContent = formatLockEntries(updatedEntries);
+
+        await fs.promises.writeFile(locksFile, updatedContent, "utf-8");
+
+        await runGit(["add", locksFile]);
+        await runGit(["commit", "-m", `Voluntary step-down for ${sha}`]);
+
+        const pushed = await runGit(["push", "origin", locksBranch]).catch(
+          () => false
+        );
+
+        if (pushed) {
+          coreExports.notice("Step-down complete, retrying wait loop...");
+        } else {
+          coreExports.warning("Step-down complete, retrying wait loop...");
+        }
+
+        const delayInMilliSec = sleepInterval * 1000;
+        await new Promise((r) => setTimeout(r, delayInMilliSec));
+        elapsed += sleepInterval;
+        continue; // retry loop
+      }
+    }
+
+    if (headSHA === sha) {
       coreExports.info("Lock confirmed! Proceeding...");
       return;
     } else {
-      coreExports.notice(
-        `Lock held by another workflow (${firstCommitSHA}). Waiting...`
-      );
+      coreExports.notice(`Lock held by another workflow (${headSHA}). Waiting...`);
       const delayInMilliSec = sleepInterval * 1000;
       await new Promise((r) => setTimeout(r, delayInMilliSec));
       elapsed += sleepInterval;
@@ -31530,42 +31696,76 @@ async function waitForLock(
   }
 }
 
+const INPUTS = {
+  TOKEN: "token",
+  LOCKS_DIR: "locks_dir",
+  LOCKS_BRANCH: "locks_branch",
+  ACTION: "action",
+  MAX_WAIT: "max_wait",
+  SLEEP_INTERVAL: "sleep_interval",
+  STEP_DOWN: "step_down",
+};
+
+const ACTIONS = {
+  ACQUIRE: "acquire",
+  RELEASE: "release",
+  WAIT: "wait",
+};
+
 async function run() {
   try {
     const branch = githubExports.context.ref.replace("refs/heads/", "");
-    const locksDir = coreExports.getInput("locks_dir") || branch.replace(/\//g, "_");
+    const locksDir =
+      coreExports.getInput(INPUTS.LOCKS_DIR) || branch.replace(/\//g, "_");
     const locksFile = `${locksDir}/lock.txt`;
 
-    const maxWaitInput = coreExports.getInput("max_wait");
+    const maxWaitInput = coreExports.getInput(INPUTS.MAX_WAIT);
     const maxWait = parseInt(maxWaitInput, 10);
     if (isNaN(maxWait) || maxWait <= 0) {
-      throw new Error(`Invalid max_wait value: ${maxWaitInput}`);
+      throw new Error(`Invalid ${INPUTS.MAX_WAIT} value: ${maxWaitInput}`);
     }
 
-    const sleepIntervalInput = coreExports.getInput("sleep_interval");
+    const sleepIntervalInput = coreExports.getInput(INPUTS.SLEEP_INTERVAL);
     const sleepInterval = parseInt(sleepIntervalInput, 10);
     if (isNaN(sleepInterval) || sleepInterval <= 0) {
-      throw new Error(`Invalid sleep_interval value: ${sleepInterval}`);
+      throw new Error(
+        `Invalid ${INPUTS.SLEEP_INTERVAL} value: ${sleepInterval}`
+      );
     }
 
-    const locksBranch = coreExports.getInput("locks_branch");
+    const locksBranch = coreExports.getInput(INPUTS.LOCKS_BRANCH);
 
-    const actionType = coreExports.getInput("action");
-    if (!actionType) throw new Error("Input 'action' is required");
+    const actionType = coreExports.getInput(INPUTS.ACTION);
+    if (!actionType) throw new Error(`Input '${INPUTS.ACTION}' is required`);
 
-    const token = coreExports.getInput("token");
+    const stepDownInput = coreExports.getInput(INPUTS.STEP_DOWN);
+    const stepDown = stepDownInput?.toLowerCase() === "true";
+
+    if (stepDown && actionType !== ACTIONS.WAIT) {
+      throw new Error(
+        `'${INPUTS.STEP_DOWN}' can only be used when action is '${ACTIONS.WAIT}'`
+      );
+    }
+
+    const token = coreExports.getInput(INPUTS.TOKEN);
     const actor = githubExports.context.actor;
     await configureGit(token, actor);
 
     switch (actionType) {
-      case "acquire":
+      case ACTIONS.ACQUIRE:
         await acquireLock(locksFile, locksBranch);
         break;
-      case "release":
+      case ACTIONS.RELEASE:
         await releaseLock(locksFile, locksBranch);
         break;
-      case "wait":
-        await waitForLock(locksFile, locksBranch, maxWait, sleepInterval);
+      case ACTIONS.WAIT:
+        await waitForLock(
+          locksFile,
+          locksBranch,
+          maxWait,
+          sleepInterval,
+          stepDown
+        );
         break;
       default:
         throw new Error(`Unknown action type: ${actionType}`);

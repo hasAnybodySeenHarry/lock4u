@@ -2,7 +2,12 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { buildLockEntry, removeLockEntry } from "../src/helpers.js";
+import {
+  buildLockEntry,
+  removeLockEntry,
+  reorderLockEntries,
+  splitEntries,
+} from "../src/helpers.js";
 
 describe("Lock Actions", () => {});
 
@@ -130,9 +135,56 @@ describe("Removing Lock Entry", () => {
   });
 });
 
-function splitEntries(content) {
-  return content
-    .split(/^\s*---\s*$/m)
-    .map((e) => e.trim())
-    .filter(Boolean);
-}
+describe("Reorder Lock Entries", () => {
+  let lockContent;
+  let lockEntries;
+
+  beforeAll(async () => {
+    const lockFilePath = path.resolve(__dirname, "test-lock.txt");
+    lockContent = await fs.promises.readFile(lockFilePath, "utf-8");
+    lockEntries = splitEntries(lockContent);
+  });
+
+  it("should move self entry after the last ancestor", () => {
+    const myIndex = 0;
+    const self = lockEntries[myIndex];
+
+    const lastAncestorIndex = 1;
+    const lastAncestor = lockEntries[lastAncestorIndex];
+
+    const updatedEntries = reorderLockEntries(
+      lockEntries,
+      myIndex,
+      lastAncestorIndex,
+      self
+    );
+
+    expect(updatedEntries[lastAncestorIndex]).toBe(self);
+    expect(updatedEntries[lastAncestorIndex - 1]).toBe(lastAncestor);
+    expect(updatedEntries.indexOf(self)).not.toBe(myIndex);
+    lockEntries.forEach((entry) => {
+      expect(updatedEntries).toContain(entry);
+    });
+  });
+
+  it("should receive the same content back", () => {
+    const myIndex = 1;
+    const self = lockEntries[myIndex];
+
+    const lastAncestorIndex = 0;
+    const lastAncestor = lockEntries[lastAncestorIndex];
+
+    const updatedEntries = reorderLockEntries(
+      lockEntries,
+      myIndex,
+      lastAncestorIndex,
+      self
+    );
+
+    expect(updatedEntries[myIndex]).toBe(self);
+    expect(updatedEntries[lastAncestorIndex]).toBe(lastAncestor);
+    lockEntries.forEach((entry) => {
+      expect(updatedEntries).toContain(entry);
+    });
+  });
+});
