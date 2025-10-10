@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import * as github from "@actions/github";
 import * as core from "@actions/core";
-import { checkBranchExists, runGit, buildLockEntry } from "./helpers.js";
+import { buildLockEntry } from "../helpers.js";
+import { checkBranchExists, runGit } from "../git.js";
 
 export async function acquireLock(locksFile, locksBranch) {
   const maxRetries = 5;

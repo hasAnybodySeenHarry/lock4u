@@ -2,20 +2,19 @@ import fs from "fs";
 import * as github from "@actions/github";
 import * as core from "@actions/core";
 import {
-  checkBranchExists,
-  runGit,
   reorderLockEntries,
   formatLockEntries,
   splitEntries,
-  isShallowRepo,
-} from "./helpers.js";
+} from "../helpers.js";
+
+import { checkBranchExists, runGit, isShallowRepo } from "../git.js";
 
 export async function waitForLock(
   locksFile,
   locksBranch,
   maxWait,
   sleepInterval,
-  strictMode = true
+  stepDown
 ) {
   let elapsed = 0;
 
@@ -27,9 +26,7 @@ export async function waitForLock(
   }
 
   while (elapsed < maxWait) {
-    await runGit(["fetch", "origin", locksBranch]);
-    await runGit(["checkout", locksBranch]);
-    await runGit(["reset", "--hard", `origin/${locksBranch}`]);
+    await syncBranch(locksBranch);
 
     const lockContent = await fs.promises.readFile(locksFile, "utf-8");
     const headSHAMatch = lockContent.match(/^commit_sha:\s*(\S+)/m);
@@ -41,7 +38,7 @@ export async function waitForLock(
 
     const { sha, payload, ref } = github.context;
 
-    if (strictMode) {
+    if (stepDown) {
       const [orgName, repoName] = payload.repository.full_name.split("/");
       const branchName = ref.split("/").pop();
       const myRef = `${orgName}/${repoName}/${branchName}`;

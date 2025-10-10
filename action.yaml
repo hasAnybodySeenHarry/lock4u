@@ -42,6 +42,13 @@ inputs:
       Default: 5 seconds.
     required: false
     default: 5
+  step_down:
+    description: >
+      Whether to voluntarily step down in the queue if another commit 
+      is an ancestor of the waiting workflow when action is "wait".
+      Default: false.
+    required: false
+    default: false
 runs:
   using: "node24"
   main: "dist/index.js"
