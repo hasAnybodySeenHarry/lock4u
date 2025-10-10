@@ -7,6 +7,7 @@ import {
   reorderLockEntries,
   formatLockEntries,
   splitEntries,
+  isShallowRepo,
 } from "./helpers.js";
 
 export async function waitForLock(
@@ -68,7 +69,16 @@ export async function waitForLock(
 
           if (!fetchedMyRef) {
             core.info(`Fetching branch ${branchName} for ancestry check`);
-            await runGit(["fetch", "origin", branchName, "--depth=0"]);
+            const isShallow = await isShallowRepo();
+
+            if (isShallow) {
+              core.info("Repository is shallow.");
+              await runGit(["fetch", "--unshallow", "origin", branchName]);
+            } else {
+              core.info("Repository already has full history.");
+              await runGit(["fetch", "origin", branchName]);
+            }
+
             fetchedMyRef = true;
           }
 

@@ -32,6 +32,18 @@ export async function configureGit(token, actor) {
   }
 }
 
+export async function isShallowRepo() {
+  let output = "";
+  await exec("git", ["rev-parse", "--is-shallow-repository"], {
+    listeners: {
+      stdout: (data) => {
+        output += data.toString();
+      },
+    },
+  });
+  return output.trim() === "true";
+}
+
 export async function runGit(args, options = {}, allowNonZero = false) {
   try {
     await exec("git", args, options);
