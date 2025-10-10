@@ -28,6 +28,7 @@ export async function waitForLock(
 
   while (elapsed < maxWait) {
     await runGit(["fetch", "origin", locksBranch]);
+    await runGit(["checkout", locksBranch]);
     await runGit(["reset", "--hard", `origin/${locksBranch}`]);
 
     const lockContent = await fs.promises.readFile(locksFile, "utf-8");
