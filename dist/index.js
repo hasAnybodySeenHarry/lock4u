@@ -31274,6 +31274,18 @@ async function configureGit(token, actor) {
   }
 }
 
+async function isShallowRepo() {
+  let output = "";
+  await execExports.exec("git", ["rev-parse", "--is-shallow-repository"], {
+    listeners: {
+      stdout: (data) => {
+        output += data.toString();
+      },
+    },
+  });
+  return output.trim() === "true";
+}
+
 async function runGit(args, options = {}, allowNonZero = false) {
   try {
     await execExports.exec("git", args, options);
@@ -31607,7 +31619,16 @@ async function waitForLock(
 
           if (!fetchedMyRef) {
             coreExports.info(`Fetching branch ${branchName} for ancestry check`);
-            await runGit(["fetch", "origin", branchName, "--depth=0"]);
+            const isShallow = await isShallowRepo();
+
+            if (isShallow) {
+              coreExports.info("Repository is shallow.");
+              await runGit(["fetch", "--unshallow", "origin", branchName]);
+            } else {
+              coreExports.info("Repository already has full history.");
+              await runGit(["fetch", "origin", branchName]);
+            }
+
             fetchedMyRef = true;
           }
 
