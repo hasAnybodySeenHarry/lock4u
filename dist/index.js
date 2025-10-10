@@ -31426,6 +31426,12 @@ async function checkBranchExists(branch) {
   }
 }
 
+async function syncBranch(branch) {
+  await runGit(["fetch", "origin", branch]);
+  await runGit(["checkout", branch]);
+  await runGit(["reset", "--hard", `origin/${branch}`]);
+}
+
 async function acquireLock(locksFile, locksBranch) {
   const maxRetries = 5;
   const retryDelay = 1000;

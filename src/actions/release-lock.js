@@ -2,7 +2,7 @@ import fs from "fs";
 import * as github from "@actions/github";
 import * as core from "@actions/core";
 import { removeLockEntry } from "../helpers.js";
-import { runGit, checkBranchExists } from "../git.js";
+import { runGit, checkBranchExists, syncBranch } from "../git.js";
 
 export async function releaseLock(locksFile, locksBranch) {
   const maxRetries = 5;

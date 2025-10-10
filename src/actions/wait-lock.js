@@ -6,8 +6,12 @@ import {
   formatLockEntries,
   splitEntries,
 } from "../helpers.js";
-
-import { checkBranchExists, runGit, isShallowRepo } from "../git.js";
+import {
+  checkBranchExists,
+  runGit,
+  isShallowRepo,
+  syncBranch,
+} from "../git.js";
 
 export async function waitForLock(
   locksFile,
