@@ -35,10 +35,11 @@ export async function waitForLock(
       throw new Error(`Lock file ${locksFile} is missing commit SHA`);
     }
 
-    const { sha, repository, ref_name } = github.context;
+    const { sha, payload, ref } = github.context;
 
-    const [orgName, repoName] = repository.split("/");
-    const myRef = `${orgName}/${repoName}/${ref_name}`;
+    const [orgName, repoName] = payload.repository.full_name.split("/");
+    const branchName = ref.split("/").pop();
+    const myRef = `${orgName}/${repoName}/${branchName}`;
 
     const lockEntries = lockContent
       .split(/^---$/m)

@@ -66,7 +66,7 @@ export async function buildLockEntry({
   workflow,
   runId,
   actor,
-  ref,
+  lockGroup,
   commitMessage,
 }) {
   const timestamp = new Date().toISOString();
@@ -83,7 +83,7 @@ export async function buildLockEntry({
     `workflow: ${workflow}\n` +
     `run_id: ${runId}\n` +
     `actor: ${actor}\n` +
-    `ref: ${ref}\n` +
+    `lockGroup: ${lockGroup}\n` +
     `commit_message: |\n${formattedMessage}\n---\n`;
 
   return lockEntry;

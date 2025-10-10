@@ -24,14 +24,11 @@ export async function acquireLock(locksFile, locksBranch) {
     const locksDir = path.dirname(locksFile);
     await fs.promises.mkdir(locksDir, { recursive: true });
 
-    const { sha, workflow, runId, actor, ref_name, payload, repository } =
-      github.context;
+    const { sha, workflow, runId, actor, ref, payload } = github.context;
 
-    core.info("GitHub context:");
-    core.info(JSON.stringify(github.context, null, 2));
-
-    const [orgName, repoName] = repository.split("/");
-    const ref = `${orgName}/${repoName}/${ref_name}`;
+    const [orgName, repoName] = payload.repository.full_name.split("/");
+    const branchName = ref.split("/").pop();
+    const lockGroup = `${orgName}/${repoName}/${branchName}`;
 
     const commitMessage = payload.head_commit?.message || "(no commit message)";
 
@@ -40,7 +37,7 @@ export async function acquireLock(locksFile, locksBranch) {
       workflow,
       runId,
       actor,
-      ref,
+      lockGroup,
       commitMessage,
     });
 
