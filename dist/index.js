@@ -31607,7 +31607,7 @@ async function waitForLock(
 
           if (!fetchedMyRef) {
             coreExports.info(`Fetching branch ${branchName} for ancestry check`);
-            await runGit(["fetch", "origin", branchName]);
+            await runGit(["fetch", "origin", branchName, "--depth=0"]);
             fetchedMyRef = true;
           }
 
