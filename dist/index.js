@@ -31341,7 +31341,7 @@ async function buildLockEntry({
 function removeLockEntry(lockContent, commitSHA) {
   if (!lockContent.trim()) return lockContent;
 
-  const entries = lockContent.split(/^---$/m);
+  const entries = splitEntries(lockContent);
 
   const updatedEntries = entries.filter((entry) => {
     const match = entry.match(/^commit_sha:\s*(\S+)/m);
@@ -31413,6 +31413,13 @@ function formatLockEntries(entries) {
     throw new TypeError("entries must be an array");
   }
   return entries.join("\n---\n").trim() + (entries.length > 0 ? "\n" : "");
+}
+
+function splitEntries(content) {
+  return content
+    .split(/^\s*---\s*$/m)
+    .map((e) => e.trim())
+    .filter(Boolean);
 }
 
 async function acquireLock(locksFile, locksBranch) {

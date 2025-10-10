@@ -6,6 +6,7 @@ import {
   buildLockEntry,
   removeLockEntry,
   reorderLockEntries,
+  splitEntries,
 } from "../src/helpers.js";
 
 describe("Lock Actions", () => {});
@@ -187,10 +188,3 @@ describe("Reorder Lock Entries", () => {
     });
   });
 });
-
-function splitEntries(content) {
-  return content
-    .split(/^\s*---\s*$/m)
-    .map((e) => e.trim())
-    .filter(Boolean);
-}
