@@ -31308,7 +31308,7 @@ async function buildLockEntry({
   workflow,
   runId,
   actor,
-  ref,
+  lockGroup,
   commitMessage,
 }) {
   const timestamp = new Date().toISOString();
@@ -31325,7 +31325,7 @@ async function buildLockEntry({
     `workflow: ${workflow}\n` +
     `run_id: ${runId}\n` +
     `actor: ${actor}\n` +
-    `ref: ${ref}\n` +
+    `lockGroup: ${lockGroup}\n` +
     `commit_message: |\n${formattedMessage}\n---\n`;
 
   return lockEntry;
@@ -31435,14 +31435,11 @@ async function acquireLock(locksFile, locksBranch) {
     const locksDir = require$$1$4.dirname(locksFile);
     await fs.promises.mkdir(locksDir, { recursive: true });
 
-    const { sha, workflow, runId, actor, ref_name, payload, repository } =
-      githubExports.context;
+    const { sha, workflow, runId, actor, ref, payload } = githubExports.context;
 
-    coreExports.info("GitHub context:");
-    coreExports.info(JSON.stringify(githubExports.context, null, 2));
-
-    const [orgName, repoName] = repository.split("/");
-    const ref = `${orgName}/${repoName}/${ref_name}`;
+    const [orgName, repoName] = payload.repository.full_name.split("/");
+    const branchName = ref.split("/").pop();
+    const lockGroup = `${orgName}/${repoName}/${branchName}`;
 
     const commitMessage = payload.head_commit?.message || "(no commit message)";
 
@@ -31451,7 +31448,7 @@ async function acquireLock(locksFile, locksBranch) {
       workflow,
       runId,
       actor,
-      ref,
+      lockGroup,
       commitMessage,
     });
 
@@ -31573,10 +31570,11 @@ async function waitForLock(
       throw new Error(`Lock file ${locksFile} is missing commit SHA`);
     }
 
-    const { sha, repository, ref_name } = githubExports.context;
+    const { sha, payload, ref } = githubExports.context;
 
-    const [orgName, repoName] = repository.split("/");
-    const myRef = `${orgName}/${repoName}/${ref_name}`;
+    const [orgName, repoName] = payload.repository.full_name.split("/");
+    const branchName = ref.split("/").pop();
+    const myRef = `${orgName}/${repoName}/${branchName}`;
 
     const lockEntries = lockContent
       .split(/^---$/m)
