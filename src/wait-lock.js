@@ -55,7 +55,7 @@ export async function waitForLock(
     for (let i = myIndex + 1; i < lockEntries.length; i++) {
       const entry = lockEntries[i];
       const entrySHA = entry.match(/^commit_sha:\s*(\S+)/m)?.[1];
-      const entryRef = entry.match(/^ref:\s*(\S+)/m)?.[1];
+      const entryRef = entry.match(/^lockGroup:\s*(\S+)/m)?.[1];
 
       core.info(`Looping entry index ${i}: SHA=${entrySHA}, REF=${entryRef}`);
 
