@@ -31581,10 +31581,7 @@ async function waitForLock(
     const branchName = ref.split("/").pop();
     const myRef = `${orgName}/${repoName}/${branchName}`;
 
-    const lockEntries = lockContent
-      .split(/^---$/m)
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
+    const lockEntries = splitEntries(lockContent);
 
     let needsStepDown = false;
     let lastAncestorIndex = -1;
@@ -31599,7 +31596,11 @@ async function waitForLock(
       const entrySHA = entry.match(/^commit_sha:\s*(\S+)/m)?.[1];
       const entryRef = entry.match(/^ref:\s*(\S+)/m)?.[1];
 
+      coreExports.info(`Looping entry index ${i}: SHA=${entrySHA}, REF=${entryRef}`);
+
       if (entryRef === myRef && entrySHA !== sha) {
+        coreExports.info(`Matching same branch ref: ${entryRef}, SHA=${entrySHA}`);
+
         const isAncestor = await runGit(
           ["merge-base", "--is-ancestor", entrySHA, sha],
           {},
@@ -31607,6 +31608,7 @@ async function waitForLock(
         );
 
         if (isAncestor) {
+          coreExports.info(`Ancestor found! ${entrySHA} is an ancestor of us, ${sha}`);
           needsStepDown = true;
           lastAncestorIndex = i;
         }
@@ -31614,9 +31616,7 @@ async function waitForLock(
     }
 
     if (needsStepDown) {
-      coreExports.notice(
-        `Voluntarily stepping down: found ancestor commit below us. Reordering...`
-      );
+      coreExports.notice(`Voluntarily stepping down. Reordering...`);
 
       const self = lockEntries[myIndex];
 
