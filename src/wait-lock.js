@@ -13,7 +13,8 @@ export async function waitForLock(
   locksFile,
   locksBranch,
   maxWait,
-  sleepInterval
+  sleepInterval,
+  strictMode = true
 ) {
   let elapsed = 0;
 
@@ -38,76 +39,88 @@ export async function waitForLock(
 
     const { sha, payload, ref } = github.context;
 
-    const [orgName, repoName] = payload.repository.full_name.split("/");
-    const branchName = ref.split("/").pop();
-    const myRef = `${orgName}/${repoName}/${branchName}`;
+    if (strictMode) {
+      const [orgName, repoName] = payload.repository.full_name.split("/");
+      const branchName = ref.split("/").pop();
+      const myRef = `${orgName}/${repoName}/${branchName}`;
 
-    const lockEntries = splitEntries(lockContent);
+      const lockEntries = splitEntries(lockContent);
 
-    let needsStepDown = false;
-    let lastAncestorIndex = -1;
+      let needsStepDown = false;
+      let lastAncestorIndex = -1;
 
-    const myIndex = lockEntries.findIndex(
-      (e) => e.match(/^commit_sha:\s*(\S+)/m)?.[1] === sha
-    );
-    if (myIndex === -1) throw new Error("Self entry not found in lock file");
+      const myIndex = lockEntries.findIndex(
+        (e) => e.match(/^commit_sha:\s*(\S+)/m)?.[1] === sha
+      );
+      if (myIndex === -1) throw new Error("Self entry not found in lock file");
 
-    for (let i = myIndex + 1; i < lockEntries.length; i++) {
-      const entry = lockEntries[i];
-      const entrySHA = entry.match(/^commit_sha:\s*(\S+)/m)?.[1];
-      const entryRef = entry.match(/^lockGroup:\s*(\S+)/m)?.[1];
+      let fetchedMyRef = false;
 
-      core.info(`Looping entry index ${i}: SHA=${entrySHA}, REF=${entryRef}`);
+      for (let i = myIndex + 1; i < lockEntries.length; i++) {
+        const entry = lockEntries[i];
+        const entrySHA = entry.match(/^commit_sha:\s*(\S+)/m)?.[1];
+        const entryRef = entry.match(/^lockGroup:\s*(\S+)/m)?.[1];
 
-      if (entryRef === myRef && entrySHA !== sha) {
-        core.info(`Matching same branch ref: ${entryRef}, SHA=${entrySHA}`);
+        core.info(`Looping entry index ${i}: SHA=${entrySHA}, REF=${entryRef}`);
 
-        const isAncestor = await runGit(
-          ["merge-base", "--is-ancestor", entrySHA, sha],
-          {},
-          true
-        );
+        if (entryRef === myRef && entrySHA !== sha) {
+          core.info(`Matching same branch ref: ${entryRef}, SHA=${entrySHA}`);
 
-        if (isAncestor) {
-          core.info(`Ancestor found! ${entrySHA} is an ancestor of us, ${sha}`);
-          needsStepDown = true;
-          lastAncestorIndex = i;
+          if (!fetchedMyRef) {
+            core.info(`Fetching branch ${branchName} for ancestry check`);
+            await runGit(["fetch", "origin", branchName]);
+            fetchedMyRef = true;
+          }
+
+          const isAncestor = await runGit(
+            ["merge-base", "--is-ancestor", entrySHA, sha],
+            {},
+            true
+          );
+
+          if (isAncestor) {
+            core.info(
+              `Ancestor found! ${entrySHA} is an ancestor of us, ${sha}`
+            );
+            needsStepDown = true;
+            lastAncestorIndex = i;
+          }
         }
       }
-    }
 
-    if (needsStepDown) {
-      core.notice(`Voluntarily stepping down. Reordering...`);
+      if (needsStepDown) {
+        core.notice(`Voluntarily stepping down. Reordering...`);
 
-      const self = lockEntries[myIndex];
+        const self = lockEntries[myIndex];
 
-      const updatedEntries = reorderLockEntries(
-        lockEntries,
-        myIndex,
-        lastAncestorIndex,
-        self
-      );
-      const updatedContent = formatLockEntries(updatedEntries);
+        const updatedEntries = reorderLockEntries(
+          lockEntries,
+          myIndex,
+          lastAncestorIndex,
+          self
+        );
+        const updatedContent = formatLockEntries(updatedEntries);
 
-      await fs.promises.writeFile(locksFile, updatedContent, "utf-8");
+        await fs.promises.writeFile(locksFile, updatedContent, "utf-8");
 
-      await runGit(["add", locksFile]);
-      await runGit(["commit", "-m", `Voluntary step-down for ${sha}`]);
+        await runGit(["add", locksFile]);
+        await runGit(["commit", "-m", `Voluntary step-down for ${sha}`]);
 
-      const pushed = await runGit(["push", "origin", locksBranch]).catch(
-        () => false
-      );
+        const pushed = await runGit(["push", "origin", locksBranch]).catch(
+          () => false
+        );
 
-      if (pushed) {
-        core.notice("Step-down complete, retrying wait loop...");
-      } else {
-        core.warning("Step-down complete, retrying wait loop...");
+        if (pushed) {
+          core.notice("Step-down complete, retrying wait loop...");
+        } else {
+          core.warning("Step-down complete, retrying wait loop...");
+        }
+
+        const delayInMilliSec = sleepInterval * 1000;
+        await new Promise((r) => setTimeout(r, delayInMilliSec));
+        elapsed += sleepInterval;
+        continue; // retry loop
       }
-
-      const delayInMilliSec = sleepInterval * 1000;
-      await new Promise((r) => setTimeout(r, delayInMilliSec));
-      elapsed += sleepInterval;
-      continue; // retry loop
     }
 
     if (headSHA === sha) {
